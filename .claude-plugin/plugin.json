@@ -1,7 +1,7 @@
 {
-  "name": "atif-exporter",
+  "name": "ledgit",
   "version": "1.0.0",
-  "description": "Export Claude Code sessions to ATIF (Agent Trajectory Interchange Format) for use with Harbor and other trajectory analysis tools.",
-  "author": "ATIF Exporter",
-  "repository": "https://github.com/refreshdotdev/atif-exporter-plugin"
+  "description": "File versioning for Claude Code - Git-based snapshots of your project at each conversation turn, with ATIF trajectory export.",
+  "author": "refreshdotdev",
+  "repository": "https://github.com/refreshdotdev/ledgit"
 }

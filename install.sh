@@ -1,10 +1,10 @@
 #!/bin/bash
 set -e
 
-PLUGIN_DIR="$HOME/.claude/plugins/atif-exporter-plugin"
+PLUGIN_DIR="$HOME/.claude/plugins/ledgit"
 SETTINGS_FILE="$HOME/.claude/settings.json"
 
-echo "Installing ATIF Exporter plugin for Claude Code..."
+echo "Installing Ledgit for Claude Code..."
 
 # Create plugins directory
 mkdir -p "$HOME/.claude/plugins"
@@ -16,7 +16,7 @@ if [ -d "$PLUGIN_DIR" ]; then
     git pull origin main
 else
     echo "Cloning plugin..."
-    git clone https://github.com/refreshdotdev/atif-exporter-plugin.git "$PLUGIN_DIR"
+    git clone https://github.com/refreshdotdev/ledgit.git "$PLUGIN_DIR"
 fi
 
 # Add plugin to settings.json using Python (since it's required anyway)
@@ -25,7 +25,7 @@ import json
 import os
 
 settings_file = os.path.expanduser("~/.claude/settings.json")
-plugin_path = os.path.expanduser("~/.claude/plugins/atif-exporter-plugin")
+plugin_path = os.path.expanduser("~/.claude/plugins/ledgit")
 
 # Load existing settings or create new
 settings = {}

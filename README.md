@@ -1,4 +1,4 @@
-# ATIF Exporter Plugin for Claude Code (with Ledgit)
+# Ledgit - File Versioning for Claude Code
 
 Export Claude Code sessions to the Agent Trajectory Interchange Format (ATIF) with **complete file versioning**. Every change the agent makes is tracked in a git repository, so you can see the exact state of your files at any point in the conversation.
 
@@ -15,7 +15,7 @@ Export Claude Code sessions to the Agent Trajectory Interchange Format (ATIF) wi
 Run this one-liner:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/refreshdotdev/atif-exporter-plugin/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/refreshdotdev/ledgit/main/install.sh | bash
 ```
 
 **That's it!** Now just run `claude` normally from any directory.
@@ -23,14 +23,14 @@ curl -fsSL https://raw.githubusercontent.com/refreshdotdev/atif-exporter-plugin/
 ### Manual Installation
 
 ```bash
-git clone https://github.com/refreshdotdev/atif-exporter-plugin.git ~/.claude/plugins/atif-exporter-plugin
+git clone https://github.com/refreshdotdev/ledgit.git ~/.claude/plugins/ledgit
 ```
 
 Then add to `~/.claude/settings.json`:
 
 ```json
 {
-  "plugins": ["~/.claude/plugins/atif-exporter-plugin"]
+  "plugins": ["~/.claude/plugins/ledgit"]
 }
 ```
 
