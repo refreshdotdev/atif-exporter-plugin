@@ -3,5 +3,5 @@
   "version": "1.0.0",
   "description": "Export Claude Code sessions to ATIF (Agent Trajectory Interchange Format) for use with Harbor and other trajectory analysis tools.",
   "author": "ATIF Exporter",
-  "repository": "https://github.com/your-org/atif-exporter"
+  "repository": "https://github.com/refreshdotdev/atif-exporter-plugin"
 }

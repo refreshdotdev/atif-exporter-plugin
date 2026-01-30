@@ -7,7 +7,7 @@ Export Claude Code sessions to the Agent Trajectory Interchange Format (ATIF) fo
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/atif-exporter-plugin.git
+git clone https://github.com/refreshdotdev/atif-exporter-plugin.git
 cd atif-exporter-plugin
 ```
 
