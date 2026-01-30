@@ -91,8 +91,8 @@ def main():
     transcript_path = input_data.get("transcript_path")
     cwd = input_data.get("cwd", os.getcwd())
 
-    # Get trajectories directory
-    trajectories_dir = get_trajectories_dir()
+    # Get trajectories directory for this project
+    trajectories_dir = get_trajectories_dir(cwd)
 
     # Load state manager
     state_manager = StateManager(

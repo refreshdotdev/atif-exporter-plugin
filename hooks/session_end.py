@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-SessionEnd Hook - Finalize ATIF trajectory when session ends.
+SessionEnd Hook - Finalize ATIF trajectory and commit to ledgit.
 
 This hook:
 1. Assembles the JSONL trajectory into a final JSON file
 2. Updates metadata with end time and stats
-3. Updates the global index
-4. Copies the raw transcript for reference
+3. Creates a final git commit with all session data
+4. Optionally pushes to remote
 """
 
 import json
@@ -71,8 +71,8 @@ def main():
     reason = input_data.get("reason", "other")
     cwd = input_data.get("cwd", os.getcwd())
 
-    # Get trajectories directory
-    trajectories_dir = get_trajectories_dir()
+    # Get trajectories directory for this project
+    trajectories_dir = get_trajectories_dir(cwd)
 
     # Load state manager
     state_manager = StateManager(
@@ -123,7 +123,16 @@ def main():
 
     try:
         trajectory = writer.finalize(final_metrics)
-        print(f"ATIF trajectory exported: {session_dir.name}/trajectory.json", file=sys.stderr)
+
+        # Create final commit with session data in ledgit
+        ledgit = state_manager.ledgit
+        ledgit._run_git(["add", "."], cwd=ledgit.project_dir)
+        ledgit._run_git(
+            ["commit", "-m", f"[ledgit] Session {session_id[:8]} ended: {reason}"],
+            cwd=ledgit.project_dir
+        )
+
+        print(f"Ledgit session complete: {ledgit.project_dir}", file=sys.stderr)
     except Exception as e:
         print(f"Error finalizing trajectory: {e}", file=sys.stderr)
 

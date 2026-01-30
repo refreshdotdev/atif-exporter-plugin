@@ -1,15 +1,12 @@
 #!/usr/bin/env python3
 """
-SessionStart Hook - Initialize ATIF trajectory when a Claude Code session starts.
+SessionStart Hook - Initialize ATIF trajectory and ledgit project.
 
-This hook creates the session directory with proper naming:
-  {timestamp}_{project-name}_{session-id}/
-
-And initializes:
-  - trajectory.jsonl (incremental events)
-  - metadata.json (session metadata)
-  - state.json (internal state)
-  - index.json (global session index)
+This hook:
+1. Initializes the ledgit project (if not exists) with git repo
+2. Creates the session directory with proper naming:
+   {timestamp}_{project-name}_{session-id}/
+3. Initializes trajectory files and metadata
 """
 
 import json
@@ -39,8 +36,8 @@ def main():
     source = input_data.get("source", "startup")  # startup, resume, clear, compact
     cwd = input_data.get("cwd", os.getcwd())
 
-    # Get trajectories directory
-    trajectories_dir = get_trajectories_dir()
+    # Get trajectories directory for this project (via ledgit)
+    trajectories_dir = get_trajectories_dir(cwd)
 
     # Initialize state manager with project path
     state_manager = StateManager(
@@ -49,12 +46,16 @@ def main():
         project_path=cwd
     )
 
+    # Ensure ledgit project is initialized (creates git repo, syncs files)
+    state_manager.ensure_project_initialized()
+
     # Initialize session (creates folder, metadata, index entry)
     metadata = state_manager.initialize_session(model_name=model_name)
 
     # Store extra session info
     state_manager.set_extra("source", source)
     state_manager.set_extra("cwd", cwd)
+    state_manager.set_extra("ledgit_project", state_manager.ledgit.project_hash)
 
     # Copy transcript path for reference
     transcript_path = input_data.get("transcript_path")
@@ -76,10 +77,11 @@ def main():
     writer.write_header()
 
     # Output info (shown in verbose mode)
+    ledgit_path = state_manager.ledgit.project_dir
     output = {
         "hookSpecificOutput": {
             "hookEventName": "SessionStart",
-            "additionalContext": f"ATIF trajectory: {metadata.folder_name}"
+            "additionalContext": f"Ledgit project: {ledgit_path}, Session: {metadata.folder_name}"
         }
     }
     print(json.dumps(output))

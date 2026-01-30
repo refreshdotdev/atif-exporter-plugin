@@ -1,6 +1,14 @@
-# ATIF Exporter Plugin for Claude Code
+# ATIF Exporter Plugin for Claude Code (with Ledgit)
 
-Export Claude Code sessions to the Agent Trajectory Interchange Format (ATIF) for use with [Harbor](https://harborframework.com/) and other trajectory analysis tools.
+Export Claude Code sessions to the Agent Trajectory Interchange Format (ATIF) with **complete file versioning**. Every change the agent makes is tracked in a git repository, so you can see the exact state of your files at any point in the conversation.
+
+## Features
+
+- **ATIF Trajectory Export**: Captures all interactions in [Harbor](https://harborframework.com/)-compatible ATIF format
+- **File Versioning (Ledgit)**: Git-based snapshots of your entire project at each conversation turn
+- **Before/After Snapshots**: See exactly what changed when the agent acted
+- **Per-Project Organization**: Each project has its own ledgit repo with all sessions
+- **Respects .gitignore**: Only tracks files your project tracks
 
 ## Installation
 
@@ -13,8 +21,6 @@ curl -fsSL https://raw.githubusercontent.com/refreshdotdev/atif-exporter-plugin/
 **That's it!** Now just run `claude` normally from any directory.
 
 ### Manual Installation
-
-If you prefer to install manually:
 
 ```bash
 git clone https://github.com/refreshdotdev/atif-exporter-plugin.git ~/.claude/plugins/atif-exporter-plugin
@@ -30,58 +36,70 @@ Then add to `~/.claude/settings.json`:
 
 ## How It Works
 
-When you run Claude Code, the plugin automatically:
+When you run Claude Code, the plugin:
 
-1. Creates a trajectory folder at `~/.claude/atif-trajectories/`
-2. Names it with: `{timestamp}_{project-name}_{session-id}/`
-3. Captures all interactions as ATIF-compliant steps
-4. Maintains a global `index.json` for easy lookup
+1. **Creates a ledgit project** at `~/.claude/ledgit/projects/{project-hash}/`
+2. **Initializes a git repo** to track all files
+3. **Snapshots files** before each user message and after each agent response
+4. **Records trajectories** as ATIF-compliant steps
+5. **Links snapshots to steps** so you can restore to any point
 
-## Output Location
+## Directory Structure
 
 ```
-~/.claude/atif-trajectories/
-├── index.json                                    # Global session index
-├── 2025-01-29T10-30-00_my-project_abc12345/
-│   ├── trajectory.json      # Complete ATIF trajectory
-│   ├── trajectory.jsonl     # Incremental events (for live monitoring)
-│   ├── metadata.json        # Session metadata
-│   ├── state.json           # Internal state
-│   └── raw_transcript.jsonl # Original transcript
-└── 2025-01-29T11-45-00_other-repo_def67890/
-    └── ...
+~/.claude/ledgit/
+├── index.json                              # Global projects index
+└── projects/
+    └── {project-hash}/                     # One repo per source project
+        ├── .git/                           # Git repo for versioning
+        ├── files/                          # Mirrored project files
+        ├── trajectories/                   # Session data
+        │   └── {session-folder}/
+        │       ├── trajectory.json         # Complete ATIF trajectory
+        │       ├── trajectory.jsonl        # Incremental events
+        │       ├── metadata.json           # Session metadata
+        │       ├── commits.json            # step_id -> git commit mapping
+        │       └── raw_transcript.jsonl    # Original transcript
+        └── ledgit.json                     # Project config
 ```
 
-## Custom Output Directory
+## Snapshots: Before & After
 
-Set the `ATIF_TRAJECTORIES_DIR` environment variable:
+Each conversation turn creates two snapshots:
 
+1. **before_user_message**: Captures file state when you submit a message (before agent acts)
+2. **after_agent_stop**: Captures file state after the agent finishes responding
+
+This means you can always see:
+- What the files looked like before the agent made changes
+- Exactly what the agent changed
+- The trajectory of the conversation that led to those changes
+
+## Using the Snapshots
+
+### View commit history
 ```bash
-export ATIF_TRAJECTORIES_DIR=/custom/path/to/trajectories
-claude
+cd ~/.claude/ledgit/projects/{project-hash}
+git log --oneline
 ```
 
-## Finding Your Trajectories
-
-**By folder name**: Folders are named `{timestamp}_{project}_{session}` so you can easily find them by time or project.
-
-**Watch live updates during a session**:
+### See what changed in a specific commit
 ```bash
-tail -f ~/.claude/atif-trajectories/*/trajectory.jsonl
+git show {commit-sha}
 ```
 
-**Using index.json**:
+### Restore files to a specific point
 ```bash
-# View all sessions
-cat ~/.claude/atif-trajectories/index.json | jq '.sessions'
-
-# Find sessions for a specific project
-cat ~/.claude/atif-trajectories/index.json | jq '.sessions[] | select(.project_name == "my-project")'
+git checkout {commit-sha} -- files/
 ```
 
-## Example Output
+### Find snapshots for a session
+```bash
+cat trajectories/{session-folder}/commits.json | jq '.snapshots'
+```
 
-### trajectory.json
+## Trajectory Format (ATIF v1.4)
+
 ```json
 {
   "schema_version": "ATIF-v1.4",
@@ -96,79 +114,84 @@ cat ~/.claude/atif-trajectories/index.json | jq '.sessions[] | select(.project_n
       "step_id": 1,
       "timestamp": "2025-01-29T10:30:00Z",
       "source": "user",
-      "message": "Create a hello world file"
+      "message": "Create a hello world file",
+      "extra": {
+        "snapshot": {
+          "event": "before_user_message",
+          "commit_sha": "abc123",
+          "files_changed": 0
+        }
+      }
     },
     {
       "step_id": 2,
       "timestamp": "2025-01-29T10:30:02Z",
       "source": "agent",
-      "reasoning_content": "The user wants a simple text file...",
       "message": "I'll create the file for you.",
-      "tool_calls": [
-        {
-          "tool_call_id": "toolu_01ABC",
-          "function_name": "Write",
-          "arguments": {
-            "file_path": "hello.txt",
-            "content": "Hello, World!"
-          }
+      "tool_calls": [...],
+      "observation": {...},
+      "extra": {
+        "snapshot": {
+          "event": "after_agent_stop",
+          "commit_sha": "def456",
+          "files_changed": 1
         }
-      ],
-      "observation": {
-        "results": [
-          {
-            "source_call_id": "toolu_01ABC",
-            "content": "{\"success\": true}"
-          }
-        ]
       }
     }
-  ],
-  "final_metrics": {
-    "total_steps": 2,
-    "extra": {
-      "end_reason": "prompt_input_exit",
-      "ended_at": "2025-01-29T10:31:00Z"
-    }
-  }
+  ]
 }
+```
+
+## Custom Ledgit Location
+
+```bash
+export LEDGIT_DIR=/custom/path/to/ledgit
+claude
+```
+
+## Setting Up a Remote
+
+Each project can have its own git remote for backup:
+
+```bash
+cd ~/.claude/ledgit/projects/{project-hash}
+git remote add origin git@github.com:you/project-ledgit.git
+git push -u origin main
 ```
 
 ## What Gets Captured
 
-| Event | ATIF Step |
-|-------|-----------|
-| User sends message | `source: "user"` with message |
-| Claude makes tool call | `source: "agent"` with thinking, tool_calls, observation |
-| Claude responds (no tools) | `source: "agent"` with message |
-| Subagent completes | `source: "system"` with summary |
+| Event | ATIF Step | Snapshot |
+|-------|-----------|----------|
+| User sends message | `source: "user"` | before_user_message |
+| Claude makes tool call | `source: "agent"` with tool_calls | - |
+| Claude responds (no tools) | `source: "agent"` | after_agent_stop |
+| Subagent completes | `source: "system"` | - |
 
 ## Hooks Reference
 
 | Hook | Purpose |
 |------|---------|
-| `SessionStart` | Initialize trajectory, create folder, metadata, index entry |
-| `UserPromptSubmit` | Capture user messages |
+| `SessionStart` | Initialize ledgit project and session |
+| `UserPromptSubmit` | Snapshot (before), capture user message |
 | `PostToolUse` | Capture tool calls and results |
-| `Stop` | Capture final agent responses |
-| `SessionEnd` | Finalize trajectory, update metadata and index |
+| `Stop` | Snapshot (after), capture final response |
+| `SessionEnd` | Finalize trajectory, commit session data |
 | `SubagentStop` | Track subagent completions |
 
-## Integration with Harbor
+## Gitignore Handling
 
-```python
-from harbor.utils.trajectory_validator import validate_trajectory
-import json
+The plugin respects your project's `.gitignore` files:
 
-with open("~/.claude/atif-trajectories/2025-01-29T10-30-00_my-project_abc12345/trajectory.json") as f:
-    trajectory = json.load(f)
-
-is_valid = validate_trajectory(trajectory)
-```
+- Root `.gitignore` patterns are applied
+- Nested `.gitignore` files are also respected
+- `.git/` directories are always excluded
+- Only tracked files are mirrored to ledgit
 
 ## Requirements
 
 - Python 3.8+
+- Git
 - Claude Code CLI with plugin support
 
 ## License

@@ -34,8 +34,8 @@ def main():
     stop_hook_active = input_data.get("stop_hook_active", False)
     cwd = input_data.get("cwd", os.getcwd())
 
-    # Get trajectories directory
-    trajectories_dir = get_trajectories_dir()
+    # Get trajectories directory for this project
+    trajectories_dir = get_trajectories_dir(cwd)
 
     # Load state manager
     state_manager = StateManager(

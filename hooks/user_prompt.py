@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """
-UserPromptSubmit Hook - Capture user messages for ATIF trajectory.
+UserPromptSubmit Hook - Capture user messages and create file snapshot.
 
-This hook fires when the user submits a prompt, capturing it as a user step
-in the ATIF trajectory.
+This hook:
+1. Creates a git snapshot of the current file state (BEFORE agent acts)
+2. Records the user's prompt as a step in the ATIF trajectory
 """
 
 import json
@@ -36,8 +37,8 @@ def main():
     if not prompt.strip():
         sys.exit(0)
 
-    # Get trajectories directory
-    trajectories_dir = get_trajectories_dir()
+    # Get trajectories directory for this project
+    trajectories_dir = get_trajectories_dir(cwd)
 
     # Load state manager (will find existing session folder)
     state_manager = StateManager(
@@ -49,6 +50,14 @@ def main():
 
     # Get next step ID
     step_id = state_manager.get_next_step_id()
+
+    # Create snapshot BEFORE agent acts
+    # This captures the file state at the moment the user submits their message
+    snapshot_result = state_manager.create_snapshot(
+        step_id=step_id,
+        event="before_user_message",
+        message=f"Before user message: {prompt[:50]}..." if len(prompt) > 50 else f"Before user message: {prompt}"
+    )
 
     # Initialize ATIF writer pointing to correct session dir
     writer = ATIFWriter(
@@ -62,14 +71,23 @@ def main():
     writer.jsonl_path = state_manager.session_dir / "trajectory.jsonl"
     writer.json_path = state_manager.session_dir / "trajectory.json"
 
+    # Include snapshot info in step extra data
+    extra = {
+        "cwd": cwd,
+        "permission_mode": input_data.get("permission_mode")
+    }
+    if snapshot_result:
+        extra["snapshot"] = {
+            "event": "before_user_message",
+            "commit_sha": snapshot_result.get("commit_sha"),
+            "files_changed": snapshot_result.get("files_changed", 0)
+        }
+
     # Write user step
     writer.write_user_step(
         step_id=step_id,
         message=prompt,
-        extra={
-            "cwd": cwd,
-            "permission_mode": input_data.get("permission_mode")
-        }
+        extra=extra
     )
 
     # Clear any pending tool calls from previous turn

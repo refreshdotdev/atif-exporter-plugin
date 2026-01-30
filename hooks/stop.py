@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """
-Stop Hook - Capture final agent response when Claude finishes.
+Stop Hook - Capture final agent response and create file snapshot.
 
-This hook fires when Claude finishes responding. It captures any final
-text response that wasn't part of a tool call.
+This hook:
+1. Captures any final text response from the agent
+2. Creates a git snapshot of the file state AFTER the agent finishes
 """
 
 import json
@@ -74,8 +75,8 @@ def main():
     stop_hook_active = input_data.get("stop_hook_active", False)
     cwd = input_data.get("cwd", os.getcwd())
 
-    # Get trajectories directory
-    trajectories_dir = get_trajectories_dir()
+    # Get trajectories directory for this project
+    trajectories_dir = get_trajectories_dir(cwd)
 
     # Load state manager
     state_manager = StateManager(
@@ -92,11 +93,19 @@ def main():
     )
     state_manager.update_transcript_position(new_position)
 
+    # Get next step ID for this response
+    step_id = state_manager.get_next_step_id()
+
+    # Create snapshot AFTER agent finishes
+    # This captures the file state after all the agent's changes
+    snapshot_result = state_manager.create_snapshot(
+        step_id=step_id,
+        event="after_agent_stop",
+        message=f"After agent response (step {step_id})"
+    )
+
     # Only write a step if there's a final text response
     if text_message.strip():
-        # Get next step ID
-        step_id = state_manager.get_next_step_id()
-
         # Initialize ATIF writer
         writer = ATIFWriter(
             output_dir=trajectories_dir,
@@ -109,16 +118,25 @@ def main():
         writer.jsonl_path = state_manager.session_dir / "trajectory.jsonl"
         writer.json_path = state_manager.session_dir / "trajectory.json"
 
+        # Include snapshot info in step extra data
+        extra = {
+            "stop_hook_active": stop_hook_active,
+            "cwd": cwd
+        }
+        if snapshot_result:
+            extra["snapshot"] = {
+                "event": "after_agent_stop",
+                "commit_sha": snapshot_result.get("commit_sha"),
+                "files_changed": snapshot_result.get("files_changed", 0)
+            }
+
         # Write final agent step
         writer.write_agent_step(
             step_id=step_id,
             message=text_message,
             reasoning_content=thinking_content if thinking_content else None,
             model_name=state.model_name,
-            extra={
-                "stop_hook_active": stop_hook_active,
-                "cwd": cwd
-            }
+            extra=extra
         )
 
     # Allow the stop to proceed

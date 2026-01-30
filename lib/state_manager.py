@@ -4,7 +4,23 @@ State Manager - Manage persistent state across hook invocations.
 Since each hook runs in a separate process, state must be persisted to disk.
 This module handles reading/writing session state for ATIF trajectory export.
 
-Folder naming: {timestamp}_{project-name}_{session-id}/
+Now integrated with Ledgit for project-level file versioning.
+
+Directory structure:
+~/.claude/ledgit/projects/{project-hash}/
+├── .git/
+├── files/
+├── trajectories/
+│   └── {session-folder}/     <- Session data lives here
+│       ├── trajectory.json
+│       ├── trajectory.jsonl
+│       ├── metadata.json
+│       ├── state.json
+│       └── commits.json
+├── ledgit.json
+└── index.json
+
+Session folder naming: {timestamp}_{project-name}_{session-id}/
 Example: 2025-01-29T10-30-00_my-project_abc123/
 """
 
@@ -17,9 +33,15 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, Any
 
+# Import ledgit manager
+try:
+    from ledgit_manager import LedgitManager, get_ledgit_dir
+except ImportError:
+    from .ledgit_manager import LedgitManager, get_ledgit_dir
 
-# Default trajectories directory
-DEFAULT_TRAJECTORIES_DIR = Path.home() / ".claude" / "atif-trajectories"
+
+# Default ledgit directory (trajectories now live under projects)
+DEFAULT_LEDGIT_DIR = Path.home() / ".claude" / "ledgit"
 
 
 @dataclass
@@ -183,6 +205,7 @@ class StateManager:
     Manager for session state persistence.
 
     Uses file locking to handle concurrent access from multiple hooks.
+    Integrates with LedgitManager for project-level file versioning.
     """
 
     def __init__(self, trajectories_dir: Path | str, session_id: str,
@@ -191,15 +214,23 @@ class StateManager:
         Initialize the state manager.
 
         Args:
-            trajectories_dir: Base directory for trajectory output
+            trajectories_dir: Base directory for trajectory output (can be project-specific)
             session_id: Unique session identifier
             project_path: Path to the project being worked on
         """
-        self.trajectories_dir = Path(trajectories_dir)
-        self.trajectories_dir.mkdir(parents=True, exist_ok=True)
-
         self.session_id = session_id
         self.project_path = project_path or os.getcwd()
+
+        # Initialize ledgit manager for this project
+        self._ledgit: Optional[LedgitManager] = None
+
+        # Get the correct trajectories directory from ledgit
+        if trajectories_dir:
+            self.trajectories_dir = Path(trajectories_dir)
+        else:
+            self.trajectories_dir = get_trajectories_dir(self.project_path)
+
+        self.trajectories_dir.mkdir(parents=True, exist_ok=True)
 
         # Try to find existing session folder, or we'll create one later
         self._session_dir: Optional[Path] = None
@@ -209,6 +240,18 @@ class StateManager:
         existing_folder = self._find_session_folder()
         if existing_folder:
             self._session_dir = self.trajectories_dir / existing_folder
+
+    @property
+    def ledgit(self) -> LedgitManager:
+        """Get the LedgitManager for this project."""
+        if self._ledgit is None:
+            self._ledgit = LedgitManager(self.project_path)
+        return self._ledgit
+
+    def ensure_project_initialized(self) -> None:
+        """Ensure the ledgit project is initialized."""
+        if not self.ledgit.project_exists():
+            self.ledgit.initialize_project()
 
     def _find_session_folder(self) -> Optional[str]:
         """Find an existing folder for this session ID."""
@@ -476,6 +519,42 @@ class StateManager:
 
         return metadata
 
+    def create_snapshot(self, step_id: int, event: str, message: Optional[str] = None) -> Optional[dict]:
+        """
+        Create a git snapshot of the current file state.
+
+        Args:
+            step_id: Current trajectory step ID
+            event: Event type ("before_user_message" or "after_agent_stop")
+            message: Optional commit message
+
+        Returns:
+            CommitRecord dict with commit details, or None if failed
+        """
+        try:
+            # Ensure project is initialized
+            self.ensure_project_initialized()
+
+            # Create snapshot via ledgit
+            record = self.ledgit.create_snapshot(
+                session_id=self.session_id,
+                step_id=step_id,
+                event=event,
+                message=message
+            )
+
+            if record:
+                # Save commit record to session
+                self.ledgit.save_commit_record(self.session_dir.name, record)
+                return record.to_dict()
+
+            return None
+        except Exception as e:
+            # Log error but don't fail the hook
+            import sys
+            print(f"Warning: Failed to create snapshot: {e}", file=sys.stderr)
+            return None
+
     def get_next_step_id(self) -> int:
         """Get and increment the next step ID."""
         state = self.load_state()
@@ -557,17 +636,40 @@ class StateManager:
         return state.extra.get(key, default)
 
 
-def get_trajectories_dir() -> Path:
+def get_trajectories_dir(project_path: Optional[str] = None) -> Path:
     """
     Get the trajectories output directory.
 
-    Returns:
-        Path to trajectories directory (default: ~/.claude/atif-trajectories)
-    """
-    # Check environment variable first
-    env_dir = os.environ.get("ATIF_TRAJECTORIES_DIR")
-    if env_dir:
-        return Path(env_dir)
+    With ledgit integration, trajectories are stored per-project under:
+    ~/.claude/ledgit/projects/{project-hash}/trajectories/
 
-    # Default to ~/.claude/atif-trajectories
-    return DEFAULT_TRAJECTORIES_DIR
+    Args:
+        project_path: Path to the source project. If provided, returns the
+                     project-specific trajectories directory.
+
+    Returns:
+        Path to trajectories directory
+    """
+    # Check environment variable for custom ledgit location
+    ledgit_dir = get_ledgit_dir()
+
+    if project_path:
+        # Return project-specific trajectories directory
+        ledgit = LedgitManager(project_path)
+        return ledgit.trajectories_dir
+
+    # Return global ledgit directory (for index lookups, etc.)
+    return ledgit_dir
+
+
+def get_ledgit_manager(project_path: str) -> LedgitManager:
+    """
+    Get a LedgitManager for the given project.
+
+    Args:
+        project_path: Path to the source project
+
+    Returns:
+        LedgitManager instance
+    """
+    return LedgitManager(project_path)
