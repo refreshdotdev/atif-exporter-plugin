@@ -3,5 +3,6 @@
   "version": "1.0.0",
   "description": "File versioning for Claude Code - Git-based snapshots of your project at each conversation turn, with ATIF trajectory export.",
   "author": "refreshdotdev",
-  "repository": "https://github.com/refreshdotdev/ledgit"
+  "repository": "https://github.com/refreshdotdev/ledgit",
+  "hooks": "./hooks/hooks.json"
 }
